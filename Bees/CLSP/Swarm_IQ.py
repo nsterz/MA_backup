@@ -4,7 +4,6 @@ from helper_functions import rounded
 
 
 
-
 #-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------#
 @njit
 def decode_prod_plan(ZPK, QPK, demand):
@@ -345,10 +344,81 @@ def encode_prod_plan(plan, demand):
 #-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------#
 
 
+@njit
+def compute_objective(prod_quant, X, setup_costs, production_costs,
+                            production_times, setup_times, capacities,
+                            inventory_costs,  demand):
+  
+    # prod_quant : (T, M)
+    # X          : (T, M)
+    # production_times : shape (M,)
+    # setup_times      : shape (M,)
+    # capacities       : shape (T,)
+    # demand           : shape (M, T) 
+
+    # init counter for number of constraint violations
+    num_violations = 0.0
+    
+    T = prod_quant.shape[0]  # periods
+    M = prod_quant.shape[1]  # products
+
+    # Compute production times and setup times for each period using loops.
+    prod_time = np.zeros(T)
+    setup_time = np.zeros(T)
+    for t in range(T):
+        for i in range(M):
+            prod_time[t] += prod_quant[t, i] * production_times[i]
+            setup_time[t] += X[t, i] * setup_times[i]
+            
+    # Compute overtime per period:
+    overtime = np.zeros(T)
+    for t in range(T):
+        ot = prod_time[t] + setup_time[t] - capacities[t]
+        num_violations += ot if ot > 0 else 0.0
+
+
+    # Compute net inventory for each product per period.
+    # Note: swarm.demand is shape (M, T); we want to compute per product over T
+    net_inv = np.zeros((T, M))
+    for i in range(M):
+        for t in range(T):
+            if t == 0:
+                net_inv[t, i] = prod_quant[t, i] - demand[i, t]
+            else:
+                net_inv[t, i] = net_inv[t-1, i] + prod_quant[t, i] - demand[i, t]
+    inv = np.zeros((T, M))
+    # calculate backorders for each period
+    backorders = np.zeros((T, M))
+    for t in range(T):
+        for i in range(M):
+            if net_inv[t, i] >= 0:
+                inv[t, i] = net_inv[t, i]
+                backorders[t, i] = 0.0
+            else:
+                inv[t, i] = 0.0
+                num_violations += -net_inv[t, i]
+
+                
+    # sum all the costs
+    total = 0.0
+    # Sum production and setup costs (per period and product)
+    for t in range(T):
+        for i in range(M):
+            total += production_costs[i] * prod_quant[t, i]
+            total += setup_costs[i] * X[t, i]
+            total += inventory_costs[i] * inv[t, i]
+
+
+    return  np.array([num_violations, total], dtype=np.float64)
+
+
+
+#-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------#
+
 
 @njit
-def decode_and_evaluate(X, Q, O, demand, setup_costs, production_costs,
-                        production_times, setup_times, capacities, inventory_costs, idle_carry=2):
+def decode_and_evaluate(X, Q, demand, setup_costs, production_costs,
+                        production_times, setup_times, capacities, inventory_costs):
     """
     Decodes a production plan from swarm-algorithm position
     -----
@@ -384,8 +454,7 @@ def decode_and_evaluate(X, Q, O, demand, setup_costs, production_costs,
 
     prod_quant = np.zeros((M, T))
 
-    # ------------------------------------------------------------------------------------------------------------------ # 
-    # 1. Decode the production plan
+    
     
     for i in range(M):
         for t in range(T):
@@ -521,82 +590,12 @@ def decode_and_evaluate(X, Q, O, demand, setup_costs, production_costs,
             # Clamp negatives
             if prod_quant[i ,t] < 0.0:
                 prod_quant[i, t] = 0.0
-
-    # ------------------------------------------------------------------------------------------------------------------ # 
-    # 2. Check the setup sequence for feasibility
-
-    
-    violations = 0.0
-    # no product is setup initially, use negative values
-    last_setup = np.full(M, -10_000_000, np.int64)
-    
-
-    for t in range(T):
-        #print('last setup', last_setup)
-
-        # 1) production without explicit setup
-        carried = -1
-        max_last = -10_000_000
-        # pick carried candidate: most recent within idle window
-        for m in range(M):
-            if X[m, t] == 1 and O[m, t] == 0:
-                
-                if t - last_setup[m] <= idle_carry:
-                    if last_setup[m] > max_last:
-                        max_last = last_setup[m]
-                        carried = m
-
-        # 2) apply carry
-        if carried >= 0:
-            #print(f"Carry-over setup for product {carried} at period {t}")
-            last_setup[carried] = t
-            # invalidate all other prior setup states when we carry over one state
-            for m in range(M):
-                if m != carried:
-                    last_setup[m] = -10_000_000
-
-        # 3) explicit setups
-        did_setup = False
-        for m in range(M):
-            if O[m, t] == 1:
- 
-                #print(f"Setup cost for product {k} at period {t}: +{setup_costs[k]}")
-                last_setup[m] = t
-                did_setup = True
-
-        # 4) reconfiguration: if any explicit setup, lose carry for others
-        if did_setup:
-            for m in range(M):
-                if O[m, t] == 0:
-                    last_setup[m] = -10_000_000
-                    
-
-        
-
-
-        # 5) penalties for others
-        penalty_occurred = False
-        for m in range(M):
-            if X[m, t] == 1 and O[m, t] == 0 and m != carried:
-                violations +=1
-                penalty_occurred = True
-
-        # 6) after any penalty, invalidate all prior setup states
-        if penalty_occurred:
-            for m in range(M):
-                last_setup[m] = -10_000_000
-            carried = -1
-        #print(last_setup)
-   
-    
-    # ------------------------------------------------------------------------------------------------------------------ # 
-    # 3. Determine total costs, backorders and overtime
-
                 
     net_inv = np.zeros((M, T))
     inv = np.zeros((M, T))
     prod_time = np.zeros(T)
     setup_time = np.zeros(T)
+    violations = 0.0
     total_cost = 0.0
 
     # Inventory and violations
@@ -611,18 +610,15 @@ def decode_and_evaluate(X, Q, O, demand, setup_costs, production_costs,
                 inv[i, t] = net_inv[i, t]
             else:
                 violations += -net_inv[i, t]  # backorder penalty
-            if X[i,t]== 1 and prod_quant[i,t]==0:
-                violations +=1
-                
 
     # Cost and time
     for t in range(T):
         for i in range(M):
             total_cost += production_costs[i] * prod_quant[i, t]
-            total_cost += setup_costs[i] * O[i, t]
+            total_cost += setup_costs[i] * X[i, t]
             total_cost += inventory_costs[i] * inv[i, t]
             prod_time[t] += prod_quant[i, t] * production_times[i]
-            setup_time[t] += O[i, t] * setup_times[i]
+            setup_time[t] += X[i, t] * setup_times[i]
 
         ot = prod_time[t] + setup_time[t] - capacities[t]
         if ot > 0:
