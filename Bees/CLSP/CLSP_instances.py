@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import numpy as np
 
 @dataclass(frozen=True)
-class SwarmConfig1:
+class CLSP1:
     M: int = 3
     T: int = 6
     setup_costs: np.ndarray = np.array([100,120,110], dtype=np.float64)
@@ -17,7 +17,7 @@ class SwarmConfig1:
 
 
 @dataclass(frozen=True)
-class SwarmConfig2:
+class CLSP2:
     M: int = 8
     T: int = 8
     setup_costs: np.ndarray = np.array([112,184,144,187,127,147,100,188], dtype=np.float64)
@@ -35,4 +35,21 @@ class SwarmConfig2:
        [0, 0, 21, 13, 7, 0, 22, 0],
        [0.0, 25.0, 43.0, 25.0, 0.0, 52.0, 10.0, 42.0],
        [42.0, 18.0, 40.0, 2.0, 0.0, 71.0, 0.0, 41.0]], dtype=np.float64)
+
+
+@dataclass(frozen=True)
+class CLSPL:
+    M: int = 5
+    T: int = 6
+    setup_costs: np.ndarray = np.array([400,150,100, 100, 100], dtype=np.float64)
+    production_costs: np.ndarray = np.array([0,0,0,0,0], dtype=np.float64)
+    inventory_costs: np.ndarray = np.array([4,3,2,2,1], dtype=np.float64)
+    production_times: np.ndarray = np.array([1,1,1,1,1], dtype=np.float64)
+    setup_times: np.ndarray = np.array([10,10,10,10,10], dtype=np.float64)
+    capacities: np.ndarray = np.array([200,200,200,200,200,200], dtype=np.float64)
+    demand: np.ndarray = np.array([[30,0,80,0,40,0],
+                                   [0,0,30,0,70,0],
+                                   [0,0,40,0,60,0],
+                                   [0,0,20,0,0,10],
+                                   [0,0,60,0,50,0]], dtype=np.float64)
 
