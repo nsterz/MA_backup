@@ -195,16 +195,16 @@ def decode_prod_plan(ZPK, QPK, demand):
 def encode_prod_plan(plan, demand):
     T = plan.shape[1]
     M = plan.shape[0]
-    X = np.zeros((T, M))
-    Q = np.zeros((T, M)).astype(np.float64)
+    X = np.zeros((M, T))
+    Q = np.zeros((M, T)).astype(np.float64)
     # iterate products
     for i in range(M):
         for t in range(T):
             # skip non production periods
             if plan[i, t] == 0:
-                X[t,i] = 0
+                X[i,t] = 0
             else:
-                X[t,i] = 1
+                X[i,t] = 1
                 # Find next production period t2
                 t2 = T - 1
                 for j in range(t+1, T):
@@ -244,7 +244,7 @@ def encode_prod_plan(plan, demand):
                         q = plan[i,t] - s1
                         if (q > 0) and (s2>0):
                             
-                            Q[t2,i] = q / s2
+                            Q[i, t2] = q / s2
 
                     # ---------------------------------------------------------------------------------------------------------- #
                 # t = T
@@ -266,7 +266,7 @@ def encode_prod_plan(plan, demand):
                     else:
                         
                         if demand[i,t] > 0:
-                            Q[t,i] = 1 - (plan[i,t] / demand[i,t])
+                            Q[i, t] = 1 - (plan[i,t] / demand[i,t])
                         
                         
                 # ----------------------------------------------------------------------------------------------------------#
@@ -312,7 +312,7 @@ def encode_prod_plan(plan, demand):
                         q = plan[i,t] -s2 
 
                         if (q > 0) and (s1 > 0):
-                            Q[t2,i] = q / s1
+                            Q[i, t2] = q / s1
                             
                         
                     # Case 8: production after and before t --> produce in advance t to t2 and cover backorders of t1 
@@ -331,15 +331,13 @@ def encode_prod_plan(plan, demand):
                         s2 = 0.0
                         for j in range(t2, end):
                             s2 += demand[i, j]
-   
-                        
-
+  
 
                         # units that were preproduced
-                        q = plan[i,t] - s1*(1-Q[t,i])
+                        q = plan[i,t] - s1*(1-Q[i,t])
                         # if q is positive, a partial lot for t2 to t3 was already produced
                         if (q>0) and (s2>0):
-                            Q[t2,i] = q / s2                      
+                            Q[i, t2] = q / s2                      
     return X, Q
 #-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------#
 
@@ -610,6 +608,8 @@ def decode_and_evaluate(X, Q, demand, setup_costs, production_costs,
                 inv[i, t] = net_inv[i, t]
             else:
                 violations += -net_inv[i, t]  # backorder penalty
+            if X[i,t]==1 and prod_quant[i,t]==0:
+                violations += 1
 
     # Cost and time
     for t in range(T):
