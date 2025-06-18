@@ -43,7 +43,7 @@ def iterate_abc(
                     Oc[m, t] = 1.0 - Oc[m, t]
                     
 
-                val = Q[i, m, t] + phi * (Q[i, m, t] - Q[k, m, t])
+                val = Q[i, m, t] + 0.2*phi * (Q[i, m, t] - Q[k, m, t])
                 if val < 0.0:
                     val = 0.0
                 elif val > 1.0:
@@ -90,7 +90,7 @@ def iterate_abc(
         if k == idx:
                 continue
 
-        phi   = rand_phi_o[o] * 2.0 - 1.0
+        phi   = rand_phi_o[o] 
         share = abs(phi)
 
         # generate candidate
@@ -140,8 +140,8 @@ def iterate_abc(
         if trial[i] > limit:
             for m in range(M):
                 for t in range(T):
-                    O[i, m, t] = 1.0 if np.random.rand() < 0.5 else 0.0
-                    X[i, m, t] = 1.0 if np.random.rand() < 0.5 else 0.0
+                    O[i, m, t] = 1 if np.random.rand() < 0.5 else 0
+                    X[i, m, t] = 1 if np.random.rand() < 0.5 else 0
                     Q[i, m, t] = np.random.rand()
 
             trial[i] = 0
@@ -200,9 +200,8 @@ class ABC:
         self.K = K_onlookers 
 
         # Initialize solution arrays
-        self.X = np.random.randint(0, 2, size=(self.SN, self.M, self.T)).astype(np.float64)
-        self.O = np.random.randint(0, 2, size=(self.SN, self.M, self.T)).astype(np.float64)
-        #self.O = np.zeros((self.SN, self.M, self.T)).astype(np.float64)
+        self.X = np.random.randint(0, 2, size=(self.SN, self.M, self.T)).astype(np.int8)
+        self.O = np.random.randint(0, 2, size=(self.SN, self.M, self.T)).astype(np.int8)
         self.Q = np.random.rand(self.SN, self.M, self.T)
 
         # Trial counters
@@ -243,7 +242,7 @@ class ABC:
         self.rand_Xflip_empl    = np.random.rand(self.SN,self.M,self.T)
         self.rand_Oflip_empl    = np.random.rand(self.SN,self.M,self.T)
         self.rand_partner_onl = np.random.randint(0,self.SN,self.K)
-        self.rand_phi_onl    = np.random.rand(self.K)
+        self.rand_phi_onl    = np.random.rand(self.K)* 2.0 - 1.0
         self.rand_Xflip_onl    = np.random.rand(self.K,self.M,self.T)
         self.rand_Oflip_onl    = np.random.rand(self.K,self.M,self.T)
     
