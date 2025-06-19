@@ -26,7 +26,7 @@ def iterate_abc(
             continue
             
         phi   = rand_phi_e[i]
-        share = abs(phi)
+        share = abs(phi)*0.2
 
         # generate candidate
         Xc = X[i].copy()
@@ -36,14 +36,14 @@ def iterate_abc(
         #position update
         for m in range(M):
             for t in range(T):
-                if X[i, m, t] != X[k, m, t] and rand_Xflip_e[i, m, t] < (0.2*share):
+                if rand_Xflip_e[i, m, t] < (share) and X[i, m, t] != X[k, m, t] :
                     Xc[m, t] = 1.0 - Xc[m, t]
                     
-                if O[i, m, t] != O[k, m, t] and rand_Oflip_e[i, m, t] < (0.2* share):
+                if rand_Oflip_e[i, m, t] < (share) and O[i, m, t] != O[k, m, t] :
                     Oc[m, t] = 1.0 - Oc[m, t]
                     
 
-                val = Q[i, m, t] + 0.2*phi * (Q[i, m, t] - Q[k, m, t])
+                val = Q[i, m, t] + phi * (Q[i, m, t] - Q[k, m, t])
                 if val < 0.0:
                     val = 0.0
                 elif val > 1.0:
@@ -101,10 +101,10 @@ def iterate_abc(
         # update position
         for m in range(M):
             for t in range(T):
-                if X[idx, m, t] != X[k, m, t] and rand_Xflip_o[o, m, t] <(share):
+                if rand_Xflip_o[o, m, t] <(share) and X[idx, m, t] != X[k, m, t] :
                     Xc[m, t] = 1.0 - Xc[m, t]
 
-                if O[idx, m, t] != O[k, m, t] and rand_Oflip_o[o, m, t] <(share):
+                if rand_Oflip_o[o, m, t] <(share) and O[idx, m, t] != O[k, m, t] :
                     Oc[m, t] = 1.0 - Oc[m, t]
 
                 
@@ -238,11 +238,11 @@ class ABC:
     def step(self):
         # pre-generate random values
         self.rand_partner_empl = np.random.randint(0,self.SN,self.SN)
-        self.rand_phi_empl    = np.random.rand(self.SN)*2-1
+        self.rand_phi_empl    = np.random.rand(self.SN)*2 -1
         self.rand_Xflip_empl    = np.random.rand(self.SN,self.M,self.T)
         self.rand_Oflip_empl    = np.random.rand(self.SN,self.M,self.T)
         self.rand_partner_onl = np.random.randint(0,self.SN,self.K)
-        self.rand_phi_onl    = np.random.rand(self.K)* 2.0 - 1.0
+        self.rand_phi_onl    = np.random.rand(self.K)* 2 - 1
         self.rand_Xflip_onl    = np.random.rand(self.K,self.M,self.T)
         self.rand_Oflip_onl    = np.random.rand(self.K,self.M,self.T)
     
