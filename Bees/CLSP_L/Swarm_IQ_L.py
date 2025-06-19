@@ -182,11 +182,8 @@ def decode_prod_plan(ZPK, QPK, demand):
                 out[i, t] = 0.0
             else:
                 out[i, t] = XPK[i, t]
-    outT = np.empty((T, M))
-    for t in range(T):
-        for i in range(M):
-            outT[t, i] = out[i, t]
-    return outT
+
+    return out
 
 # ------------------------------------------------------------------------------------------------------------------------------- #
 @njit
@@ -511,7 +508,7 @@ def decode_and_evaluate(X, Q, O, demand, setup_costs, production_costs,
                         for j in range(t, t2):
                             s2 += demand[i, j]
 
-                        prod_quant[i, t] = rounded((1-Q[i, t]) * s2 + Q[i, t2] * s1)
+                        prod_quant[i, t] = rounded((1-Q[i, t]) * s2) + rounded(Q[i, t2] * s1)
 
             # Clamp negatives
             if prod_quant[i ,t] < 0.0:
