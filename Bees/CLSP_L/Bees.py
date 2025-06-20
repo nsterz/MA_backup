@@ -13,7 +13,8 @@ def iterate_abc(
     production_costs, setup_costs, inventory_costs,
     limit, K_onlookers,
     rand_partner_e, rand_phi_e, rand_Xflip_e, rand_Oflip_e,
-    rand_partner_o, rand_phi_o, rand_Xflip_o, rand_Oflip_o, best_idx
+    rand_partner_o, rand_phi_o, rand_Xflip_o, rand_Oflip_o, 
+    best_idx, threshold1, threshold2
 ):
     SN, M, T = X.shape
     #best_viols = gbest_val[0, 0]
@@ -26,29 +27,27 @@ def iterate_abc(
             continue
             
         phi   = rand_phi_e[i]
-        share = abs(phi)*0.2
 
         # generate candidate
         Xc = X[i].copy()
         Qc = Q[i].copy()
         Oc = O[i].copy()
-
         #position update
         for m in range(M):
             for t in range(T):
-                if rand_Xflip_e[i, m, t] < (share) and X[i, m, t] != X[k, m, t] :
+                if rand_Xflip_e[i, m, t] < (threshold1) and X[i, m, t] != X[k, m, t] :
                     Xc[m, t] = 1.0 - Xc[m, t]
                     
-                if rand_Oflip_e[i, m, t] < (share) and O[i, m, t] != O[k, m, t] :
+                if rand_Oflip_e[i, m, t] < (threshold1) and  O[i, m, t] != O[k, m, t] :
                     Oc[m, t] = 1.0 - Oc[m, t]
                     
-
                 val = Q[i, m, t] + phi * (Q[i, m, t] - Q[k, m, t])
                 if val < 0.0:
                     val = 0.0
                 elif val > 1.0:
                     val = 1.0
                 Qc[m, t] = val
+                
 
         
         fit_c = decode_and_evaluate(
@@ -77,7 +76,7 @@ def iterate_abc(
 
     for o in range(K_onlookers):
         # roulette‐wheel select source idx
-        threshold = rand_phi_o[o] * w_sum
+        threshold = abs(rand_phi_o[o]) * w_sum
         accum     = 0.0
         idx       = 0
         for j in range(SN):
@@ -91,7 +90,6 @@ def iterate_abc(
                 continue
 
         phi   = rand_phi_o[o] 
-        share = abs(phi)
 
         # generate candidate
         Xc = X[idx].copy()
@@ -101,19 +99,20 @@ def iterate_abc(
         # update position
         for m in range(M):
             for t in range(T):
-                if rand_Xflip_o[o, m, t] <(share) and X[idx, m, t] != X[k, m, t] :
+                
+                if rand_Xflip_o[o, m, t] < threshold2 and X[idx, m, t] != X[k, m, t] :
                     Xc[m, t] = 1.0 - Xc[m, t]
 
-                if rand_Oflip_o[o, m, t] <(share) and O[idx, m, t] != O[k, m, t] :
+                if rand_Oflip_o[o, m, t] < threshold2 and O[idx, m, t] != O[k, m, t] :
                     Oc[m, t] = 1.0 - Oc[m, t]
 
-                
-                val = Q[idx, m, t] +  phi * (Q[idx, m, t] - Q[k, m, t])
+                val = Q[idx, m, t] + np.random.uniform(-1,1)  * (Q[idx, m, t] - Q[k, m, t])
                 if val < 0.0:
                     val = 0.0
                 elif val > 1.0:
                     val = 1.0
                 Qc[m, t] = val
+                
 
         fit_c = decode_and_evaluate(
                 Xc, Qc, Oc, demand,
@@ -123,13 +122,15 @@ def iterate_abc(
 
         #  compare & update
         if (fit_c[0] < fitness[idx, 0]) or (fit_c[0] == fitness[idx, 0] and fit_c[1] < fitness[idx, 1]):
-
+            
+            
             X[idx]          = Xc
             Q[idx]          = Qc
             O[idx]          = Oc
             fitness[idx, 0] = fit_c[0]
             fitness[idx, 1] = fit_c[1]
             trial[idx]      = 0
+            
         else:
             trial[idx] += 1
 
@@ -152,7 +153,7 @@ def iterate_abc(
                     setup_costs, production_costs,
                     production_times, setup_times,
                     capacities, inventory_costs)
-            
+    
             fitness[i, 0] = fit_i[0]
             fitness[i, 1] = fit_i[1]
 
@@ -171,6 +172,7 @@ def iterate_abc(
     
     if best_local_idx != best_idx:
         gbest_val[0] = fitness[best_local_idx].copy()
+
         gbest_X[:] = X[best_local_idx].copy()
         gbest_Q[:] = Q[best_local_idx].copy()
         gbest_O[:] = O[best_local_idx].copy()
@@ -179,20 +181,20 @@ def iterate_abc(
     return (
         X, Q, O, trial, fitness,
         gbest_X, gbest_Q, gbest_O, gbest_val, best_idx)
-
-
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 
 
 class ABC:
     def __init__(
-        self, n_bees, config, limit, K_onlookers):
+        self, n_bees, config, limit, K_onlookers, threshold1, threshold2):
         
         # Problem config
         self.cfg = config()
         self.SN = n_bees
         self.M = self.cfg.M
         self.T = self.cfg.T
+        self.threshold1 = threshold1
+        self.threshold2 = threshold2
 
         # Scout threshold
         self.limit = limit
@@ -202,6 +204,7 @@ class ABC:
         # Initialize solution arrays
         self.X = np.random.randint(0, 2, size=(self.SN, self.M, self.T)).astype(np.int8)
         self.O = np.random.randint(0, 2, size=(self.SN, self.M, self.T)).astype(np.int8)
+        self.setups  = np.random.randint(0, 2, size=(self.SN, self.M, self.T)).astype(np.int8)
         self.Q = np.random.rand(self.SN, self.M, self.T)
 
         # Trial counters
@@ -216,6 +219,7 @@ class ABC:
                     self.cfg.setup_costs, self.cfg.production_costs,
                     self.cfg.production_times, self.cfg.setup_times,
                     self.cfg.capacities, self.cfg.inventory_costs)
+
             self.fitness[i, 0] = fit[0]
             self.fitness[i, 1] = fit[1]
 
@@ -238,11 +242,11 @@ class ABC:
     def step(self):
         # pre-generate random values
         self.rand_partner_empl = np.random.randint(0,self.SN,self.SN)
-        self.rand_phi_empl    = np.random.rand(self.SN)*2 -1
+        self.rand_phi_empl    = np.random.rand(self.SN)*2-1
         self.rand_Xflip_empl    = np.random.rand(self.SN,self.M,self.T)
         self.rand_Oflip_empl    = np.random.rand(self.SN,self.M,self.T)
         self.rand_partner_onl = np.random.randint(0,self.SN,self.K)
-        self.rand_phi_onl    = np.random.rand(self.K)* 2 - 1
+        self.rand_phi_onl    = np.random.rand(self.K)* 2 - 1.0
         self.rand_Xflip_onl    = np.random.rand(self.K,self.M,self.T)
         self.rand_Oflip_onl    = np.random.rand(self.K,self.M,self.T)
     
@@ -255,9 +259,19 @@ class ABC:
             self.cfg.capacities, self.cfg.production_costs, self.cfg.setup_costs,
             self.cfg.inventory_costs, self.limit, self.K,
             self.rand_partner_empl, self.rand_phi_empl, self.rand_Xflip_empl, self.rand_Oflip_empl,
-            self.rand_partner_onl, self.rand_phi_onl, self.rand_Xflip_onl, self.rand_Oflip_onl, self.best_idx
+            self.rand_partner_onl, self.rand_phi_onl, self.rand_Xflip_onl, self.rand_Oflip_onl,
+            self.best_idx, self.threshold1, self.threshold2
         )
     
+    def optimize_pbar(self, n_iter):
+        pbar = tqdm(range(n_iter), desc="ABC", unit="it")
+        for _ in pbar:
+            self.step()
+            v0, v1 = self.gbest_val[0]
+            pbar.set_postfix(viol=int(v0), obj=int(v1))
+            time.sleep(0.01)  
+        return self.gbest_val
+
     def optimize(self, n_iter):
         for _ in range(n_iter):
             self.step()
@@ -314,7 +328,7 @@ class ABC:
         w_k = max(len("Product k"), len(str(M))) + 2
         w_c = max(len('-->'), 2) + 2
         total_width = w_k + T * (w_c + 1) + 2
-        plan = decode_prod_plan(self.gbest_X, self.gbest_Q, self.cfg.demand).T
+        plan = decode_prod_plan(self.gbest_X, self.gbest_Q, self.cfg.demand)
                 # Production quantities
         print("Production quantities".center(total_width))
         def border():

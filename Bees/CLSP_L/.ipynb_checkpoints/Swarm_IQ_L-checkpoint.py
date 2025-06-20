@@ -335,42 +335,10 @@ def encode_prod_plan(plan, demand):
                             Q[i, t2] = q / s2                      
     return X, Q
 #-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------#
-
-
-
 @njit
 def decode_and_evaluate(X, Q, O, demand, setup_costs, production_costs,
                         production_times, setup_times, capacities, inventory_costs, idle_carry=2):
-    """
-    Decodes a production plan from swarm-algorithm position
-    -----
-    Considers eight cases for each period t and product i:
-      1 t = first period
-      1.1. No future production after period 1--> meet current demand only.
-      1.2 Future production planned after period 1 --> meet until next, preproduce if needed for t2 to t3
-      2 t = final period
-      2.1 At last period, no prior production --> meet current demand.
-      2.1. At last period with prior production --> meet rest of current demand
-      3 t in [2,T-1]
-      3.1 No production before or after t  --> meet current demand.
-      3.2 Production before but not after t --> produce rest of demand from t to T
-      3.3 Production after but not before t --> produce until next, preproduce ahead for t2 to t3
-      3.4 Production both before and after t --> produce rest of demand from t to t2, preproduce ahead for t2 to t3
-    
-    Parameters
-    ----------
-    X : 2D ndarray of int
-        Binary production decision matrix, shape (M, T).
-    Q : 2D ndarray of float
-        Preproduction fractions, shape (M, T).
-    demand : 2D ndarray of float
-        Demand per product per period, shape (M, T).
 
-    Returns
-    -------
-    result : 1D ndarray of float
-        [violations, total_cost]
-    """
     T = X.shape[1]
     M = X.shape[0]
 
@@ -455,7 +423,7 @@ def decode_and_evaluate(X, Q, O, demand, setup_costs, production_costs,
                             t1 = j
                             break
 
-                    # Case 5: no production before AND after t
+                    # Case 5: no production before AND after t, cover demand for t to T ; dont cover backorders
                     if (X[i,t1]==0) and (X[i,t2]==0):
                         s = 0.0
                         for j in range(t, T):
@@ -508,7 +476,7 @@ def decode_and_evaluate(X, Q, O, demand, setup_costs, production_costs,
                         for j in range(t, t2):
                             s2 += demand[i, j]
 
-                        prod_quant[i, t] = rounded((1-Q[i, t] * s2) + Q[i, t2] * s1)
+                        prod_quant[i, t] = rounded((1-Q[i, t]) * s2 + Q[i, t2] * s1)
 
             # Clamp negatives
             if prod_quant[i ,t] < 0.0:
@@ -517,7 +485,6 @@ def decode_and_evaluate(X, Q, O, demand, setup_costs, production_costs,
     # ------------------------------------------------------------------------------------------------------------------ # 
     # 2. Check the setup sequence for feasibility
 
-    
     violations = 0.0
     # no product is setup initially, use negative values
     last_setup = np.full(M, -10_000_000, np.int64)
@@ -561,9 +528,6 @@ def decode_and_evaluate(X, Q, O, demand, setup_costs, production_costs,
             for m in range(M):
                 if O[m, t] == 0:
                     last_setup[m] = -10_000_000
-                    
-
-        
 
 
         # 5) penalties for others
@@ -579,6 +543,7 @@ def decode_and_evaluate(X, Q, O, demand, setup_costs, production_costs,
                 last_setup[m] = -10_000_000
             carried = -1
         #print(last_setup)
+                
    
     
     # ------------------------------------------------------------------------------------------------------------------ # 

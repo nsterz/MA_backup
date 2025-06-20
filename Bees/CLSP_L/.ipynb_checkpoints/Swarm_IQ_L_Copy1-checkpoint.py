@@ -1,4 +1,3 @@
-
 from numba import njit
 import numpy as np
 from helper_functions import rounded
@@ -183,11 +182,8 @@ def decode_prod_plan(ZPK, QPK, demand):
                 out[i, t] = 0.0
             else:
                 out[i, t] = XPK[i, t]
-    outT = np.empty((T, M))
-    for t in range(T):
-        for i in range(M):
-            outT[t, i] = out[i, t]
-    return outT
+
+    return out
 
 # ------------------------------------------------------------------------------------------------------------------------------- #
 @njit
@@ -427,7 +423,7 @@ def decode_and_evaluate(X, Q, O, demand, setup_costs, production_costs,
                         for j in range(t, t2):
                             s2 += demand[i, j]
                             
-                        prod_quant[i, t] = s2 + Q[i, t2] * s1
+                        prod_quant[i, t] = rounded(s2 + Q[i, t2] * s1)
                         
                 # ---------------------------------------------------------------------------------------------------------- #
                 # t = T
@@ -447,7 +443,7 @@ def decode_and_evaluate(X, Q, O, demand, setup_costs, production_costs,
                         
                     # Case 4: prior production 
                     else:
-                        prod_quant[i, t] = (1-Q[i, t]) * demand[i, t]
+                        prod_quant[i, t] = rounded((1-Q[i, t]) * demand[i, t])
                           
                 # ----------------------------------------------------------------------------------------------------------#
                 # t in [2,T-1]
@@ -473,7 +469,7 @@ def decode_and_evaluate(X, Q, O, demand, setup_costs, production_costs,
                         for j in range(t, t2+1):
                             s += demand[i, j]
                         
-                        prod_quant[i, t] = (1 - Q[i, t]) * s
+                        prod_quant[i, t] = rounded((1 - Q[i, t]) * s)
 
                     # Case 7: production after but not before t 
                     elif (X[i,t1]==0) and (X[i,t2]==1):
@@ -492,7 +488,7 @@ def decode_and_evaluate(X, Q, O, demand, setup_costs, production_costs,
                         for j in range(t, t2):
                             s2 += demand[i, j]
 
-                        prod_quant[i, t] = s2 + Q[i, t2] * s1
+                        prod_quant[i, t] = rounded(s2 + Q[i, t2] * s1)
                         
                         
                     # Case 8: production after and before t  
@@ -512,7 +508,7 @@ def decode_and_evaluate(X, Q, O, demand, setup_costs, production_costs,
                         for j in range(t, t2):
                             s2 += demand[i, j]
 
-                        prod_quant[i, t] = (1-Q[i, t]) * s2 + Q[i, t2] * s1
+                        prod_quant[i, t] = rounded((1-Q[i, t] * s2) + Q[i, t2] * s1)
 
             # Clamp negatives
             if prod_quant[i ,t] < 0.0:
@@ -521,7 +517,7 @@ def decode_and_evaluate(X, Q, O, demand, setup_costs, production_costs,
     # ------------------------------------------------------------------------------------------------------------------ # 
     # 2. Check the setup sequence for feasibility
 
-    
+    setup_states = np.zeros((M, T)).astype(np.int8)
     violations = 0.0
     # no product is setup initially, use negative values
     last_setup = np.full(M, -10_000_000, np.int64)
@@ -546,6 +542,7 @@ def decode_and_evaluate(X, Q, O, demand, setup_costs, production_costs,
         if carried >= 0:
             #print(f"Carry-over setup for product {carried} at period {t}")
             last_setup[carried] = t
+            setup_states[m,t] = 1
             # invalidate all other prior setup states when we carry over one state
             for m in range(M):
                 if m != carried:
@@ -555,6 +552,7 @@ def decode_and_evaluate(X, Q, O, demand, setup_costs, production_costs,
         did_setup = False
         for m in range(M):
             if O[m, t] == 1:
+                setup_states[m,t] = 1
  
                 #print(f"Setup cost for product {k} at period {t}: +{setup_costs[k]}")
                 last_setup[m] = t
@@ -605,11 +603,8 @@ def decode_and_evaluate(X, Q, O, demand, setup_costs, production_costs,
 
             if net_inv[i, t] >= 0:
                 inv[i, t] = net_inv[i, t]
-            # count number of backorders
             else:
-                violations += -net_inv[i, t]  
-                
-            # penalize when 0 units are produced (swarm otherwise has no incentive to do this)
+                violations += -net_inv[i, t]  # backorder penalty
             if X[i,t]== 1 and prod_quant[i,t]==0:
                 violations +=1
                 
@@ -620,12 +615,11 @@ def decode_and_evaluate(X, Q, O, demand, setup_costs, production_costs,
             total_cost += production_costs[i] * prod_quant[i, t]
             total_cost += setup_costs[i] * O[i, t]
             total_cost += inventory_costs[i] * inv[i, t]
-            prod_time[t] += np.ceil(prod_quant[i, t] * production_times[i])
+            prod_time[t] += prod_quant[i, t] * production_times[i]
             setup_time[t] += O[i, t] * setup_times[i]
 
         ot = prod_time[t] + setup_time[t] - capacities[t]
-        # count number of overtime units
         if ot > 0:
             violations += ot
 
-    return np.array([violations, total_cost], dtype=np.float64)
+    return setup_states, np.array([violations, total_cost], dtype=np.float64)
